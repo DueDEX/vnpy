@@ -193,11 +193,7 @@ class DuedexRestApi(RestClient):
         """
         Generate DueDEX signature.
         """
-        # Authentication is not required for public endpoints
-        if request.path in ["/v1/instrument"]:
-            return request
-
-        # Sign
+        request.headers = request.headers or {}
         timestamp = int(time.time() * 1000)
         expiration = timestamp + 30 * 1000
 
@@ -209,6 +205,9 @@ class DuedexRestApi(RestClient):
         if request.data:
             body = json.dumps(request.data, separators=(',', ':'))
             request.data = body
+            request.headers.update({
+                'Content-Type': 'application/json',
+            })
         else:
             body = ""
 
@@ -218,16 +217,13 @@ class DuedexRestApi(RestClient):
         ).hexdigest()
 
         # Add headers
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
+        request.headers.update({
             "Ddx-Timestamp": str(timestamp),
             "Ddx-Expiration": str(expiration),
             "Ddx-Key": self.key,
             "Ddx-Signature": signature,
-        }
+        })
 
-        request.headers = headers
         return request
 
     def connect(
@@ -843,6 +839,11 @@ class DuedexWebsocketApi(WebsocketClient):
                                   orderid=orderid, gateway_name=self.gateway_name
                                   )
                 self.orders[orderkey] = order
+
+            if d["type"] not in ORDERTYPE_DUEDEX2VT:
+                self.gateway.write_log(
+                    f"Received unknown order type {d['type']}.")
+                continue
 
             if "type" in d:
                 order.type = ORDERTYPE_DUEDEX2VT[d["type"]]
